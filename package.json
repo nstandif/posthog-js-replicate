@@ -2,20 +2,46 @@
   "name": "posthog-replicate",
   "version": "0.1.0",
   "description": "PostHog analytics wrapper for Replicate SDK - track AI model usage with LLM observability",
-  "module": "src/index.ts",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "author": "Nathan Standifer",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nstandif/posthog-js-replicate.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nstandif/posthog-js-replicate/issues"
+  },
+  "homepage": "https://github.com/nstandif/posthog-js-replicate#readme",
   "type": "module",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
+    },
+    "./package.json": "./package.json"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target node",
+    "build": "npm run build:esm && npm run build:cjs",
+    "build:esm": "tsc -p tsconfig.esm.json && echo '{\"type\":\"module\"}' > dist/esm/package.json",
+    "build:cjs": "tsc -p tsconfig.cjs.json && echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run clean && npm run build",
+    "clean": "rm -rf dist"
   },
   "keywords": [
     "posthog",
@@ -24,9 +50,16 @@
     "llm",
     "analytics",
     "observability",
-    "tracking"
+    "tracking",
+    "openai",
+    "clip",
+    "machine-learning",
+    "ml"
   ],
-  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "sideEffects": false,
   "dependencies": {
     "replicate": "^1.4.0"
   },
@@ -35,7 +68,8 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/node": "^20",
     "posthog-node": "^5.14.0",
-    "typescript": "^5"
+    "typescript": "^5.9.0"
   }
 }

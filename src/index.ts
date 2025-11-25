@@ -1,6 +1,6 @@
 import ReplicateSDK from "replicate";
 import type { PostHog } from "posthog-node";
-import { captureGeneration, createTimer } from "./capture";
+import { captureGeneration, createTimer } from "./capture.js";
 import type {
   ReplicateOptions,
   RunOptions,
@@ -8,8 +8,8 @@ import type {
   PredictionCreateOptions,
   PostHogTrackingOptions,
   ReplicateClient,
-} from "./types";
-import { POSTHOG_CONSTANTS } from "./types";
+} from "./types.js";
+import { POSTHOG_CONSTANTS } from "./types.js";
 
 // Re-export types for consumers
 export type {
@@ -18,7 +18,7 @@ export type {
   StreamOptions,
   PredictionCreateOptions,
   PostHogTrackingOptions,
-} from "./types";
+} from "./types.js";
 
 /**
  * PostHog-instrumented wrapper for the Replicate SDK

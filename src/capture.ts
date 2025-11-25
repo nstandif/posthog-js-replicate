@@ -1,6 +1,6 @@
 import type { PostHog } from "posthog-node";
-import type { CaptureOptions } from "./types";
-import { POSTHOG_CONSTANTS } from "./types";
+import type { CaptureOptions } from "./types.js";
+import { POSTHOG_CONSTANTS } from "./types.js";
 
 /**
  * Captures an AI generation event to PostHog
