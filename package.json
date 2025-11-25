@@ -2,7 +2,7 @@
   "name": "posthog-replicate",
   "version": "0.1.0",
   "description": "PostHog analytics wrapper for Replicate SDK - track AI model usage with LLM observability",
-  "author": "Nathan Standifer",
+  "author": "Nathan Standiford",
   "license": "MIT",
   "repository": {
     "type": "git",
