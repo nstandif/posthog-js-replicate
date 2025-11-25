@@ -1,3 +1,10 @@
+## [0.2.2](https://github.com/nstandif/posthog-js-replicate/compare/v0.2.1...v0.2.2) (2025-11-25)
+
+
+### Bug Fixes
+
+* **ci:** use gh CLI for releases, npm install for publish ([395594b](https://github.com/nstandif/posthog-js-replicate/commit/395594bd680260f170b7f7d16ec57302ff3f65b4))
+
 ## [0.2.1](https://github.com/nstandif/posthog-js-replicate/compare/v0.2.0...v0.2.1) (2025-11-25)
 
 
