@@ -32,12 +32,5 @@ jobs:
           skip-commit: false
           skip-on-empty: true
           create-summary: true
-
-      - name: Create GitHub Release
-        if: ${{ steps.changelog.outputs.skipped == 'false' }}
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.changelog.outputs.tag }}
-          name: ${{ steps.changelog.outputs.tag }}
-          body: ${{ steps.changelog.outputs.clean_changelog }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          skip-github-release: false
+          release-name: '{version}'
