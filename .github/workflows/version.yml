@@ -8,16 +8,16 @@ on:
       - 'package.json'
       - 'CHANGELOG.md'
 
+permissions:
+  contents: write
+
 jobs:
   version:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Bump version and create changelog
         id: changelog
@@ -32,5 +32,12 @@ jobs:
           skip-commit: false
           skip-on-empty: true
           create-summary: true
-          skip-github-release: false
-          release-name: '{version}'
+
+      - name: Create GitHub Release
+        if: ${{ steps.changelog.outputs.skipped == 'false' }}
+        run: |
+          gh release create ${{ steps.changelog.outputs.tag }} \
+            --title "${{ steps.changelog.outputs.tag }}" \
+            --notes "${{ steps.changelog.outputs.clean_changelog }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
