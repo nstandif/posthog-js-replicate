@@ -1,3 +1,10 @@
+# [0.3.0](https://github.com/nstandif/posthog-js-replicate/compare/v0.2.7...v0.3.0) (2025-11-26)
+
+
+### Features
+
+* add predictions.get() tracking with auto-linking ([#6](https://github.com/nstandif/posthog-js-replicate/issues/6)) ([02ee759](https://github.com/nstandif/posthog-js-replicate/commit/02ee759493937be02f7100ccfc983ae459b17f23))
+
 ## [0.2.7](https://github.com/nstandif/posthog-js-replicate/compare/v0.2.6...v0.2.7) (2025-11-26)
 
 
