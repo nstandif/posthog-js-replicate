@@ -32,10 +32,27 @@ Every call sends a `$ai_generation` event to PostHog with model, latency, and in
 - `run()` - full execution with output
 - `stream()` - streaming responses
 - `predictions.create()` - async prediction creation
+- `predictions.get()` - prediction status polling (captures output when complete)
+
+### Async Predictions
+
+Tracking options are automatically linked between `create()` and `get()` calls:
+
+```typescript
+// Pass tracking options once at creation
+const prediction = await replicate.predictions.create({
+  model: 'stability-ai/sdxl',
+  input: { prompt: 'A sunset' },
+  posthogDistinctId: 'user_123'
+});
+
+// Options are automatically inherited - no need to pass them again
+const result = await replicate.predictions.get(prediction.id);
+```
 
 ## What's Not Tracked
 
-- `predictions.get()`, `predictions.list()`, `predictions.cancel()`
+- `predictions.list()`, `predictions.cancel()`
 - `models.*`, `deployments.*`, `hardware.*` and other non-generation methods
 
 ## Caveats
