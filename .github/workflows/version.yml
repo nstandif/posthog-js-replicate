@@ -33,11 +33,4 @@ jobs:
           skip-on-empty: true
           create-summary: true
 
-      - name: Create GitHub Release
-        if: ${{ steps.changelog.outputs.skipped == 'false' }}
-        run: |
-          gh release create ${{ steps.changelog.outputs.tag }} \
-            --title "${{ steps.changelog.outputs.tag }}" \
-            --notes "${{ steps.changelog.outputs.clean_changelog }}"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Release is created by release.yml workflow when tag is pushed
