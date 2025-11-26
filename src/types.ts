@@ -78,6 +78,14 @@ export interface PredictionCreateOptions extends PostHogTrackingOptions {
 }
 
 /**
+ * Options for predictions.get(), combining Replicate options with PostHog tracking
+ */
+export interface PredictionGetOptions extends PostHogTrackingOptions {
+  /** Signal for aborting the request */
+  signal?: AbortSignal;
+}
+
+/**
  * Options for the stream() method, combining Replicate options with PostHog tracking
  */
 export interface StreamOptions extends PostHogTrackingOptions {

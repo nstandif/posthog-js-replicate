@@ -6,6 +6,7 @@ import type {
   RunOptions,
   StreamOptions,
   PredictionCreateOptions,
+  PredictionGetOptions,
   PostHogTrackingOptions,
 } from "./types.js";
 
@@ -46,6 +47,7 @@ export type {
   RunOptions,
   StreamOptions,
   PredictionCreateOptions,
+  PredictionGetOptions,
   PostHogTrackingOptions,
 } from "./types.js";
 
@@ -74,19 +76,25 @@ export type {
 export class PostHogReplicate extends ReplicateOriginal {
   private posthog: PostHog;
   private originalPredictionsCreate: ReplicateOriginal["predictions"]["create"];
+  private originalPredictionsGet: ReplicateOriginal["predictions"]["get"];
+  /** Map prediction IDs to their PostHog tracking params from create() */
+  private predictionTrackingParams: Map<string, PostHogTrackingOptions> = new Map();
 
   constructor(options: ReplicateOptions) {
     const { posthog, ...replicateOptions } = options;
     super(replicateOptions);
     this.posthog = posthog;
 
-    // Store reference to original predictions.create before wrapping
+    // Store references to original predictions methods before wrapping
     this.originalPredictionsCreate = this.predictions.create.bind(this.predictions);
+    this.originalPredictionsGet = this.predictions.get.bind(this.predictions);
 
-    // Wrap predictions.create with PostHog tracking
+    // Wrap predictions methods with PostHog tracking
     const self = this;
     const wrappedCreate = (options: PredictionCreateOptions) => self.createPrediction(options);
+    const wrappedGet = (predictionId: string, options?: PredictionGetOptions) => self.getPrediction(predictionId, options);
     (this.predictions as Record<string, unknown>).create = wrappedCreate;
+    (this.predictions as Record<string, unknown>).get = wrappedGet;
   }
 
   /**
@@ -240,6 +248,13 @@ export class PostHogReplicate extends ReplicateOriginal {
     try {
       const result = await this.originalPredictionsCreate(replicateOptions as Parameters<ReplicateOriginal["predictions"]["create"]>[0]);
       prediction = result as unknown as Record<string, unknown>;
+
+      // Store tracking params for later predictions.get() calls
+      const predictionId = prediction?.id as string | undefined;
+      if (predictionId && Object.values(posthogParams).some(v => v !== undefined)) {
+        this.predictionTrackingParams.set(predictionId, posthogParams);
+      }
+
       return result;
     } catch (err) {
       isError = true;
@@ -272,6 +287,75 @@ export class PostHogReplicate extends ReplicateOriginal {
         groups: posthogParams.posthogGroups,
         privacyMode: posthogParams.posthogPrivacyMode,
         predictionId: prediction?.id as string | undefined,
+      });
+    }
+  }
+
+  /**
+   * Get a prediction by ID
+   *
+   * This method retrieves a prediction's current status. When the prediction
+   * is complete (status: "succeeded"), the PostHog event captures the output.
+   *
+   * @param predictionId - The prediction ID to retrieve
+   * @param options - Optional settings including PostHog tracking options
+   * @returns The prediction object
+   */
+  private async getPrediction(predictionId: string, options?: PredictionGetOptions): Promise<unknown> {
+    // Merge stored params from create() with any provided options (provided options take precedence)
+    const storedParams = this.predictionTrackingParams.get(predictionId) || {};
+    const providedParams = options ? extractPostHogParams(options).posthogParams : {};
+    const posthogParams: PostHogTrackingOptions = { ...storedParams, ...providedParams };
+    const replicateOptions = options ? { signal: options.signal } : undefined;
+
+    const getElapsed = createTimer();
+    let prediction: Record<string, unknown> | undefined;
+    let isError = false;
+    let error: unknown;
+    let httpStatus = 200;
+
+    try {
+      const result = await this.originalPredictionsGet(predictionId, replicateOptions);
+      prediction = result as unknown as Record<string, unknown>;
+      return result;
+    } catch (err) {
+      isError = true;
+      error = err;
+      httpStatus = this.extractHttpStatus(err) || 500;
+      throw err;
+    } finally {
+      const latency = getElapsed();
+
+      // Extract model info from prediction if available
+      const model = prediction?.model as string || prediction?.version as string || "unknown";
+      const status = prediction?.status as string;
+      const isCompleted = status === "succeeded" || status === "failed" || status === "canceled";
+
+      // Clean up stored params when prediction completes
+      if (isCompleted) {
+        this.predictionTrackingParams.delete(predictionId);
+      }
+
+      captureGeneration(this.posthog, {
+        model: String(model),
+        latency,
+        httpStatus,
+        isError: isError || status === "failed",
+        error: error || (status === "failed" ? prediction?.error : undefined),
+        input: prediction?.input,
+        // Only include output if prediction completed successfully
+        output: status === "succeeded" ? prediction?.output : undefined,
+        distinctId: posthogParams.posthogDistinctId,
+        traceId: posthogParams.posthogTraceId,
+        customProperties: {
+          ...posthogParams.posthogProperties,
+          $ai_prediction_status: status,
+          $ai_prediction_get: true,
+          $ai_prediction_completed: isCompleted,
+        },
+        groups: posthogParams.posthogGroups,
+        privacyMode: posthogParams.posthogPrivacyMode,
+        predictionId,
       });
     }
   }
