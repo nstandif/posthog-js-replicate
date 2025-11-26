@@ -1,3 +1,10 @@
+## [0.2.4](https://github.com/nstandif/posthog-js-replicate/compare/v0.2.3...v0.2.4) (2025-11-26)
+
+
+### Bug Fixes
+
+* **ci:** upgrade npm for trusted publishing support ([34c8445](https://github.com/nstandif/posthog-js-replicate/commit/34c84458f9999ff1937cde69df7fa8753f387a9b))
+
 ## [0.2.3](https://github.com/nstandif/posthog-js-replicate/compare/v0.2.2...v0.2.3) (2025-11-26)
 
 
