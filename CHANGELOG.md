@@ -1,3 +1,10 @@
+## [0.2.3](https://github.com/nstandif/posthog-js-replicate/compare/v0.2.2...v0.2.3) (2025-11-26)
+
+
+### Bug Fixes
+
+* **ci:** split release creation into tag-triggered workflow ([52e3b9a](https://github.com/nstandif/posthog-js-replicate/commit/52e3b9a33c03486a9968cda39eaeef22881765a9))
+
 ## [0.2.2](https://github.com/nstandif/posthog-js-replicate/compare/v0.2.1...v0.2.2) (2025-11-25)
 
 
