@@ -67,9 +67,12 @@
     "posthog-node": ">=4.0.0"
   },
   "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
     "@types/bun": "latest",
     "@types/node": "^20",
     "posthog-node": "^5.14.0",
+    "semantic-release": "^25.0.2",
     "typescript": "^5.9.0"
   }
 }
