@@ -1,3 +1,10 @@
+## [0.2.7](https://github.com/nstandif/posthog-js-replicate/compare/v0.2.6...v0.2.7) (2025-11-26)
+
+
+### Bug Fixes
+
+* **ci:** use bun for release job ([33f16bc](https://github.com/nstandif/posthog-js-replicate/commit/33f16bc1b519fe96df7640c8d69583948c17c202))
+
 ## [0.2.6](https://github.com/nstandif/posthog-js-replicate/compare/v0.2.5...v0.2.6) (2025-11-26)
 
 
@@ -27,4 +34,3 @@
 ### Bug Fixes
 
 * **ci:** use gh CLI for releases, npm install for publish ([395594b](https://github.com/nstandif/posthog-js-replicate/commit/395594bd680260f170b7f7d16ec57302ff3f65b4))
-
