@@ -1,5 +1,4 @@
 import type { PostHog } from "posthog-node";
-import type ReplicateSDK from "replicate";
 
 /**
  * PostHog-specific options that can be passed to any wrapped method
@@ -38,13 +37,15 @@ export interface ReplicateOptions {
  */
 export interface RunOptions extends PostHogTrackingOptions {
   /** Input parameters for the model */
-  input: Record<string, unknown>;
+  input: object;
   /** Wait options for polling */
   wait?: {
     /** Polling interval in milliseconds */
     interval?: number;
     /** Maximum wait mode */
     mode?: "poll" | "block";
+    /** Timeout in milliseconds */
+    timeout?: number;
   };
   /** Webhook URL for async notifications */
   webhook?: string;
@@ -63,13 +64,15 @@ export interface PredictionCreateOptions extends PostHogTrackingOptions {
   /** Model version ID */
   version?: string;
   /** Input parameters for the model */
-  input: Record<string, unknown>;
+  input: object;
   /** Webhook URL for async notifications */
   webhook?: string;
   /** Webhook events filter */
   webhook_events_filter?: Array<"start" | "output" | "logs" | "completed">;
   /** Whether to stream the output */
   stream?: boolean;
+  /** Wait timeout in ms, boolean, or options */
+  wait?: number | boolean | { interval?: number };
   /** Signal for aborting the request */
   signal?: AbortSignal;
 }
@@ -79,7 +82,7 @@ export interface PredictionCreateOptions extends PostHogTrackingOptions {
  */
 export interface StreamOptions extends PostHogTrackingOptions {
   /** Input parameters for the model */
-  input: Record<string, unknown>;
+  input: object;
   /** Webhook URL for async notifications */
   webhook?: string;
   /** Webhook events filter */
@@ -131,7 +134,3 @@ export const POSTHOG_CONSTANTS = {
   EVENT_NAME: "$ai_generation",
 } as const;
 
-/**
- * Type for the underlying Replicate SDK client
- */
-export type ReplicateClient = InstanceType<typeof ReplicateSDK>;

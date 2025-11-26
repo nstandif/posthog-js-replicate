@@ -1,4 +1,4 @@
-import ReplicateSDK from "replicate";
+import ReplicateOriginal from "replicate";
 import type { PostHog } from "posthog-node";
 import { captureGeneration, createTimer } from "./capture.js";
 import type {
@@ -7,9 +7,38 @@ import type {
   StreamOptions,
   PredictionCreateOptions,
   PostHogTrackingOptions,
-  ReplicateClient,
 } from "./types.js";
-import { POSTHOG_CONSTANTS } from "./types.js";
+
+/**
+ * Extracts PostHog tracking options from combined options object
+ * Returns the PostHog params and the remaining Replicate options
+ */
+function extractPostHogParams<T extends PostHogTrackingOptions>(
+  options: T
+): {
+  posthogParams: PostHogTrackingOptions;
+  replicateOptions: Omit<T, keyof PostHogTrackingOptions>;
+} {
+  const {
+    posthogDistinctId,
+    posthogTraceId,
+    posthogProperties,
+    posthogGroups,
+    posthogPrivacyMode,
+    ...replicateOptions
+  } = options;
+
+  return {
+    posthogParams: {
+      posthogDistinctId,
+      posthogTraceId,
+      posthogProperties,
+      posthogGroups,
+      posthogPrivacyMode,
+    },
+    replicateOptions: replicateOptions as Omit<T, keyof PostHogTrackingOptions>,
+  };
+}
 
 // Re-export types for consumers
 export type {
@@ -21,9 +50,9 @@ export type {
 } from "./types.js";
 
 /**
- * PostHog-instrumented wrapper for the Replicate SDK
+ * PostHog-instrumented extension of the Replicate SDK
  *
- * This class wraps the official Replicate SDK and automatically sends
+ * This class extends the official Replicate SDK and automatically sends
  * `$ai_generation` events to PostHog for LLM analytics.
  *
  * @example
@@ -42,53 +71,22 @@ export type {
  * await phClient.shutdown();
  * ```
  */
-export class Replicate {
-  private client: ReplicateClient;
+export class PostHogReplicate extends ReplicateOriginal {
   private posthog: PostHog;
-
-  /** Access to the predictions API with PostHog tracking */
-  public predictions: {
-    create: (options: PredictionCreateOptions) => Promise<unknown>;
-    get: (id: string) => Promise<unknown>;
-    cancel: (id: string) => Promise<unknown>;
-    list: () => Promise<unknown>;
-  };
-
-  /** Access to the models API (passthrough, no tracking) */
-  public models: ReplicateClient["models"];
-
-  /** Access to the deployments API (passthrough, no tracking) */
-  public deployments: ReplicateClient["deployments"];
-
-  /** Access to the hardware API (passthrough, no tracking) */
-  public hardware: ReplicateClient["hardware"];
-
-  /** Access to the collections API (passthrough, no tracking) */
-  public collections: ReplicateClient["collections"];
-
-  /** Access to the webhooks API (passthrough, no tracking) */
-  public webhooks: ReplicateClient["webhooks"];
+  private originalPredictionsCreate: ReplicateOriginal["predictions"]["create"];
 
   constructor(options: ReplicateOptions) {
     const { posthog, ...replicateOptions } = options;
-
+    super(replicateOptions);
     this.posthog = posthog;
-    this.client = new ReplicateSDK(replicateOptions);
 
-    // Set up predictions namespace with tracking
-    this.predictions = {
-      create: this.createPrediction.bind(this),
-      get: this.client.predictions.get.bind(this.client.predictions),
-      cancel: this.client.predictions.cancel.bind(this.client.predictions),
-      list: this.client.predictions.list.bind(this.client.predictions),
-    };
+    // Store reference to original predictions.create before wrapping
+    this.originalPredictionsCreate = this.predictions.create.bind(this.predictions);
 
-    // Pass through other namespaces without modification
-    this.models = this.client.models;
-    this.deployments = this.client.deployments;
-    this.hardware = this.client.hardware;
-    this.collections = this.client.collections;
-    this.webhooks = this.client.webhooks;
+    // Wrap predictions.create with PostHog tracking
+    const self = this;
+    const wrappedCreate = (options: PredictionCreateOptions) => self.createPrediction(options);
+    (this.predictions as Record<string, unknown>).create = wrappedCreate;
   }
 
   /**
@@ -111,25 +109,18 @@ export class Replicate {
    * });
    * ```
    */
-  async run(model: `${string}/${string}` | `${string}/${string}:${string}`, options: RunOptions): Promise<unknown> {
-    const {
-      posthogDistinctId,
-      posthogTraceId,
-      posthogProperties,
-      posthogGroups,
-      posthogPrivacyMode,
-      ...replicateOptions
-    } = options;
+  override async run(model: `${string}/${string}` | `${string}/${string}:${string}`, options: RunOptions): Promise<object> {
+    const { posthogParams, replicateOptions } = extractPostHogParams(options);
 
     const getElapsed = createTimer();
-    let output: unknown;
+    let output: object | undefined;
     let isError = false;
     let error: unknown;
     let httpStatus = 200;
 
     try {
-      // Cast to satisfy the Replicate SDK's stricter types
-      output = await this.client.run(model, replicateOptions as Parameters<typeof this.client.run>[1]);
+      // Call parent class run method
+      output = await super.run(model, replicateOptions as Parameters<ReplicateOriginal["run"]>[1]);
     } catch (err) {
       isError = true;
       error = err;
@@ -146,16 +137,16 @@ export class Replicate {
         error,
         input: replicateOptions.input,
         output,
-        distinctId: posthogDistinctId,
-        traceId: posthogTraceId,
-        customProperties: posthogProperties,
-        groups: posthogGroups,
-        privacyMode: posthogPrivacyMode,
+        distinctId: posthogParams.posthogDistinctId,
+        traceId: posthogParams.posthogTraceId,
+        customProperties: posthogParams.posthogProperties,
+        groups: posthogParams.posthogGroups,
+        privacyMode: posthogParams.posthogPrivacyMode,
         stream: false,
       });
     }
 
-    return output;
+    return output as object;
   }
 
   /**
@@ -180,18 +171,11 @@ export class Replicate {
    * }
    * ```
    */
-  async *stream(
+  override async *stream(
     model: `${string}/${string}` | `${string}/${string}:${string}`,
     options: StreamOptions
   ): AsyncGenerator<{ event: string; data: string; id?: string }> {
-    const {
-      posthogDistinctId,
-      posthogTraceId,
-      posthogProperties,
-      posthogGroups,
-      posthogPrivacyMode,
-      ...replicateOptions
-    } = options;
+    const { posthogParams, replicateOptions } = extractPostHogParams(options);
 
     const getElapsed = createTimer();
     let collectedOutput = "";
@@ -200,7 +184,7 @@ export class Replicate {
     let httpStatus = 200;
 
     try {
-      const stream = this.client.stream(model, replicateOptions);
+      const stream = super.stream(model, replicateOptions);
 
       for await (const event of stream) {
         // Collect output for tracking
@@ -225,11 +209,11 @@ export class Replicate {
         error,
         input: replicateOptions.input,
         output: collectedOutput || undefined,
-        distinctId: posthogDistinctId,
-        traceId: posthogTraceId,
-        customProperties: posthogProperties,
-        groups: posthogGroups,
-        privacyMode: posthogPrivacyMode,
+        distinctId: posthogParams.posthogDistinctId,
+        traceId: posthogParams.posthogTraceId,
+        customProperties: posthogParams.posthogProperties,
+        groups: posthogParams.posthogGroups,
+        privacyMode: posthogParams.posthogPrivacyMode,
         stream: true,
       });
     }
@@ -245,14 +229,7 @@ export class Replicate {
    * @returns The created prediction object
    */
   private async createPrediction(options: PredictionCreateOptions): Promise<unknown> {
-    const {
-      posthogDistinctId,
-      posthogTraceId,
-      posthogProperties,
-      posthogGroups,
-      posthogPrivacyMode,
-      ...replicateOptions
-    } = options;
+    const { posthogParams, replicateOptions } = extractPostHogParams(options);
 
     const getElapsed = createTimer();
     let prediction: Record<string, unknown> | undefined;
@@ -261,7 +238,7 @@ export class Replicate {
     let httpStatus = 200;
 
     try {
-      const result = await this.client.predictions.create(replicateOptions as Parameters<typeof this.client.predictions.create>[0]);
+      const result = await this.originalPredictionsCreate(replicateOptions as Parameters<ReplicateOriginal["predictions"]["create"]>[0]);
       prediction = result as unknown as Record<string, unknown>;
       return result;
     } catch (err) {
@@ -285,15 +262,15 @@ export class Replicate {
         input: replicateOptions.input,
         // Output is not available yet for async predictions
         output: undefined,
-        distinctId: posthogDistinctId,
-        traceId: posthogTraceId,
+        distinctId: posthogParams.posthogDistinctId,
+        traceId: posthogParams.posthogTraceId,
         customProperties: {
-          ...posthogProperties,
+          ...posthogParams.posthogProperties,
           // Mark this as an async prediction creation
           $ai_async_prediction: true,
         },
-        groups: posthogGroups,
-        privacyMode: posthogPrivacyMode,
+        groups: posthogParams.posthogGroups,
+        privacyMode: posthogParams.posthogPrivacyMode,
         predictionId: prediction?.id as string | undefined,
       });
     }
@@ -323,5 +300,8 @@ export class Replicate {
   }
 }
 
+// Export PostHogReplicate as Replicate for drop-in compatibility
+export { PostHogReplicate as Replicate };
+
 // Default export for convenience
-export default Replicate;
+export default PostHogReplicate;

@@ -1,7 +1,4 @@
 import { test, expect, mock, beforeEach, describe } from "bun:test";
-import { Replicate, type ReplicateOptions } from "./index";
-import { captureGeneration, createTimer } from "./capture";
-import { POSTHOG_CONSTANTS } from "./types";
 import type { PostHog } from "posthog-node";
 
 // Type for our mock capture calls
@@ -11,6 +8,50 @@ interface MockCaptureCall {
   properties: Record<string, unknown>;
   groups?: Record<string, string>;
 }
+
+// Mock Replicate SDK - must be before any imports that use it
+const mockRun = mock(() => Promise.resolve({ result: "test output" }));
+const mockStream = mock(async function* () {
+  yield { event: "output", data: "Hello " };
+  yield { event: "output", data: "World" };
+  yield { event: "done", data: "" };
+});
+const mockPredictionsCreate = mock(() =>
+  Promise.resolve({ id: "pred_123", status: "starting" })
+);
+
+// Set up module mock before importing our code
+// Methods must be on prototype for super.method() to work
+mock.module("replicate", () => ({
+  default: class MockReplicate {
+    predictions = {
+      create: mockPredictionsCreate,
+      get: mock(() => Promise.resolve({})),
+      cancel: mock(() => Promise.resolve({})),
+      list: mock(() => Promise.resolve({})),
+    };
+    models = {};
+    deployments = {};
+    hardware = {};
+    collections = {};
+    webhooks = {};
+
+    // Methods must be defined this way for super.method() calls to work
+    run(_model: string, _options: object) {
+      return mockRun();
+    }
+    stream(_model: string, _options: object) {
+      return mockStream();
+    }
+  },
+}));
+
+// Now import our code after the mock is set up
+const { Replicate } = await import("./index");
+const { captureGeneration, createTimer } = await import("./capture");
+const { POSTHOG_CONSTANTS } = await import("./types");
+
+type PredictionCreateOptions = import("./index").PredictionCreateOptions;
 
 // Mock PostHog client
 function createMockPostHog() {
@@ -28,36 +69,6 @@ function createMockPostHog() {
     },
   };
 }
-
-// Mock Replicate SDK
-const mockRun = mock(() => Promise.resolve({ result: "test output" }));
-const mockStream = mock(async function* () {
-  yield { event: "output", data: "Hello " };
-  yield { event: "output", data: "World" };
-  yield { event: "done", data: "" };
-});
-const mockPredictionsCreate = mock(() =>
-  Promise.resolve({ id: "pred_123", status: "starting" })
-);
-
-// We'll need to mock the Replicate SDK module
-mock.module("replicate", () => ({
-  default: class MockReplicate {
-    run = mockRun;
-    stream = mockStream;
-    predictions = {
-      create: mockPredictionsCreate,
-      get: mock(() => Promise.resolve({})),
-      cancel: mock(() => Promise.resolve({})),
-      list: mock(() => Promise.resolve({})),
-    };
-    models = {};
-    deployments = {};
-    hardware = {};
-    collections = {};
-    webhooks = {};
-  },
-}));
 
 describe("Replicate Wrapper", () => {
   let mockPostHog: ReturnType<typeof createMockPostHog>;
@@ -267,13 +278,15 @@ describe("Replicate Wrapper", () => {
         posthog: mockPostHog as unknown as PostHog,
       });
 
-      const prediction = await replicate.predictions.create({
+      // Cast to our extended type that includes PostHog options
+      const createWithTracking = replicate.predictions.create as (options: PredictionCreateOptions) => Promise<unknown>;
+      const prediction = await createWithTracking({
         model: "stability-ai/sdxl",
         input: { prompt: "A beautiful sunset" },
         posthogDistinctId: "user_789",
       });
 
-      expect(prediction).toEqual({ id: "pred_123", status: "starting" });
+      expect(prediction).toMatchObject({ id: "pred_123", status: "starting" });
 
       // Verify capture includes async prediction marker
       const captureCall = mockPostHog.getCaptureCall(0);
