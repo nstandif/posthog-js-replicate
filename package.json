@@ -70,9 +70,9 @@
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
     "@types/bun": "latest",
-    "@types/node": "^20",
-    "posthog-node": "^5.14.0",
-    "semantic-release": "^25.0.2",
-    "typescript": "^5.9.0"
+    "@types/node": "^20.19.33",
+    "posthog-node": "^5.24.17",
+    "semantic-release": "^25.0.3",
+    "typescript": "^5.9.3"
   }
 }
