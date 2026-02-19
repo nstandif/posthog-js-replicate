@@ -33,6 +33,7 @@ Every call sends a `$ai_generation` event to PostHog with model, latency, and in
 - `stream()` - streaming responses
 - `predictions.create()` - async prediction creation
 - `predictions.get()` - prediction status polling (captures output when complete)
+- `deployments.predictions.create()` - deployment prediction creation
 
 ### Async Predictions
 
@@ -50,10 +51,30 @@ const prediction = await replicate.predictions.create({
 const result = await replicate.predictions.get(prediction.id);
 ```
 
+### Deployments
+
+Predictions created through deployments are tracked the same way:
+
+```typescript
+const prediction = await replicate.deployments.predictions.create(
+  'your-org',
+  'your-deployment',
+  {
+    input: { prompt: 'A sunset' },
+    posthogDistinctId: 'user_123'
+  }
+);
+
+// predictions.get() auto-links tracking params from the create call
+const result = await replicate.predictions.get(prediction.id);
+```
+
+Deployment events include `$ai_is_deployment: true` and use `owner/name` as the model identifier.
+
 ## What's Not Tracked
 
 - `predictions.list()`, `predictions.cancel()`
-- `models.*`, `deployments.*`, `hardware.*` and other non-generation methods
+- `models.*`, `hardware.*` and other non-generation methods
 
 ## Caveats
 
