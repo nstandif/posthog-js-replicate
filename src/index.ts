@@ -435,11 +435,15 @@ export class PostHogReplicate extends ReplicateOriginal {
       prediction = result as unknown as Record<string, unknown>;
 
       const predictionId = prediction?.id as string | undefined;
-      if (
-        predictionId &&
-        Object.values(posthogParams).some((v) => v !== undefined)
-      ) {
-        this.predictionTrackingParams.set(predictionId, posthogParams);
+      if (predictionId) {
+        const storedParams: PostHogTrackingOptions = {
+          ...posthogParams,
+          posthogProperties: {
+            ...posthogParams.posthogProperties,
+            $ai_is_deployment: true,
+          },
+        };
+        this.predictionTrackingParams.set(predictionId, storedParams);
       }
 
       return result;

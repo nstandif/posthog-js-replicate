@@ -19,6 +19,15 @@ const mockStream = mock(async function* () {
 const mockPredictionsCreate = mock(() =>
   Promise.resolve({ id: "pred_123", status: "starting" }),
 );
+const mockPredictionsGet = mock(() =>
+  Promise.resolve({
+    id: "deploy_pred_456",
+    status: "succeeded",
+    model: "acme/my-model",
+    input: { prompt: "Hello" },
+    output: "World",
+  }),
+);
 const mockDeploymentPredictionsCreate = mock(() =>
   Promise.resolve({ id: "deploy_pred_456", status: "starting" }),
 );
@@ -29,7 +38,7 @@ mock.module("replicate", () => ({
   default: class MockReplicate {
     predictions = {
       create: mockPredictionsCreate,
-      get: mock(() => Promise.resolve({})),
+      get: mockPredictionsGet,
       cancel: mock(() => Promise.resolve({})),
       list: mock(() => Promise.resolve({})),
     };
@@ -87,6 +96,7 @@ describe("Replicate Wrapper", () => {
     mockRun.mockClear();
     mockStream.mockClear();
     mockPredictionsCreate.mockClear();
+    mockPredictionsGet.mockClear();
     mockDeploymentPredictionsCreate.mockClear();
   });
 
@@ -397,6 +407,39 @@ describe("Replicate Wrapper", () => {
       expect(captureCall).toBeDefined();
       expect(captureCall?.properties.$ai_is_error).toBe(true);
       expect(captureCall?.properties.$ai_model).toBe("acme/missing-model");
+    });
+
+    test("propagates $ai_is_deployment to predictions.get() events", async () => {
+      const replicate = new Replicate({
+        posthog: mockPostHog as unknown as PostHog,
+      });
+
+      const createWithTracking = replicate.deployments.predictions.create as (
+        owner: string,
+        name: string,
+        options: DeploymentPredictionCreateOptions,
+      ) => Promise<unknown>;
+
+      const prediction = (await createWithTracking("acme", "my-model", {
+        input: { prompt: "Hello" },
+        posthogDistinctId: "user_deploy_4",
+        posthogTraceId: "trace_deploy_2",
+      })) as { id: string };
+
+      // Now call predictions.get() with the returned ID
+      const getWithTracking = replicate.predictions.get as (
+        id: string,
+      ) => Promise<unknown>;
+      await getWithTracking(prediction.id);
+
+      // Second capture call is from predictions.get()
+      expect(mockPostHog.capture).toHaveBeenCalledTimes(2);
+      const getCall = mockPostHog.getCaptureCall(1);
+      expect(getCall).toBeDefined();
+      expect(getCall?.distinctId).toBe("user_deploy_4");
+      expect(getCall?.properties.$ai_trace_id).toBe("trace_deploy_2");
+      expect(getCall?.properties.$ai_is_deployment).toBe(true);
+      expect(getCall?.properties.$ai_prediction_get).toBe(true);
     });
   });
 });
