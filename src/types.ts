@@ -80,7 +80,8 @@ export interface PredictionCreateOptions extends PostHogTrackingOptions {
 /**
  * Options for deployments.predictions.create(), combining Replicate options with PostHog tracking
  */
-export interface DeploymentPredictionCreateOptions extends PostHogTrackingOptions {
+export interface DeploymentPredictionCreateOptions
+  extends PostHogTrackingOptions {
   /** Input parameters for the model */
   input: object;
   /** Webhook URL for async notifications */
@@ -157,4 +158,3 @@ export const POSTHOG_CONSTANTS = {
   BASE_URL: "https://api.replicate.com",
   EVENT_NAME: "$ai_generation",
 } as const;
-

@@ -39,6 +39,8 @@
     "build:esm": "tsc -p tsconfig.esm.json && echo '{\"type\":\"module\"}' > dist/esm/package.json",
     "build:cjs": "tsc -p tsconfig.cjs.json && echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json",
     "test": "bun test",
+    "lint": "biome check .",
+    "format": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run clean && npm run build",
     "clean": "rm -rf dist"
@@ -67,6 +69,7 @@
     "posthog-node": ">=4.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.3",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
     "@types/bun": "latest",

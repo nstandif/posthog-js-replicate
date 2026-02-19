@@ -10,13 +10,13 @@
  * 3. Run: bun examples/deployment-test.ts
  */
 
-import { Replicate } from "../src/index";
 import { PostHog } from "posthog-node";
+import { Replicate } from "../src/index";
 
 async function main() {
   const phClient = new PostHog(
     process.env.POSTHOG_API_KEY || "<your_posthog_api_key>",
-    { host: "https://us.i.posthog.com" }
+    { host: "https://us.i.posthog.com" },
   );
 
   const replicate = new Replicate({
@@ -30,19 +30,17 @@ async function main() {
   console.log(`Creating deployment prediction via ${owner}/${name}...\n`);
 
   try {
-    const prediction = await (replicate.deployments.predictions.create as Function)(
-      owner,
-      name,
-      {
+    const prediction =
+      await // biome-ignore lint/complexity/noBannedTypes: example cast
+      (replicate.deployments.predictions.create as Function)(owner, name, {
         input: { prompt: "Hello, how are you?" },
         posthogDistinctId: "user_123",
-        posthogTraceId: "trace_deploy_" + Date.now(),
+        posthogTraceId: `trace_deploy_${Date.now()}`,
         posthogProperties: {
           $ai_span_name: "deployment_example",
         },
         posthogGroups: { company: "my_company" },
-      }
-    );
+      });
 
     console.log("Prediction created:", JSON.stringify(prediction, null, 2));
     console.log("\nPostHog event captured with $ai_is_deployment: true");

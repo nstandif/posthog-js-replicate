@@ -10,14 +10,14 @@
  * 3. Run: bun examples/clip-example.ts
  */
 
-import { Replicate } from "../src/index";
 import { PostHog } from "posthog-node";
+import { Replicate } from "../src/index";
 
 async function main() {
   // Initialize PostHog client
   const phClient = new PostHog(
     process.env.POSTHOG_API_KEY || "<your_posthog_api_key>",
-    { host: "https://us.i.posthog.com" }
+    { host: "https://us.i.posthog.com" },
   );
 
   // Initialize Replicate with PostHog tracking
@@ -40,7 +40,7 @@ async function main() {
       input,
       // PostHog tracking options (all optional)
       posthogDistinctId: "user_123",
-      posthogTraceId: "trace_" + Date.now(),
+      posthogTraceId: `trace_${Date.now()}`,
       posthogProperties: {
         $ai_span_name: "clip_image_analysis",
         use_case: "image_embedding",
@@ -54,7 +54,9 @@ async function main() {
     console.log("\n✅ PostHog event captured: $ai_generation");
   } catch (error) {
     console.error("Error running model:", error);
-    console.log("\n⚠️  PostHog error event captured: $ai_generation (with $ai_is_error: true)");
+    console.log(
+      "\n⚠️  PostHog error event captured: $ai_generation (with $ai_is_error: true)",
+    );
   } finally {
     // Important: Flush PostHog events before exiting
     await phClient.shutdown();

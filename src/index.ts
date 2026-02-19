@@ -1,14 +1,14 @@
-import ReplicateOriginal from "replicate";
 import type { PostHog } from "posthog-node";
+import ReplicateOriginal from "replicate";
 import { captureGeneration, createTimer } from "./capture.js";
 import type {
+  DeploymentPredictionCreateOptions,
+  PostHogTrackingOptions,
+  PredictionCreateOptions,
+  PredictionGetOptions,
   ReplicateOptions,
   RunOptions,
   StreamOptions,
-  PredictionCreateOptions,
-  PredictionGetOptions,
-  DeploymentPredictionCreateOptions,
-  PostHogTrackingOptions,
 } from "./types.js";
 
 /**
@@ -16,7 +16,7 @@ import type {
  * Returns the PostHog params and the remaining Replicate options
  */
 function extractPostHogParams<T extends PostHogTrackingOptions>(
-  options: T
+  options: T,
 ): {
   posthogParams: PostHogTrackingOptions;
   replicateOptions: Omit<T, keyof PostHogTrackingOptions>;
@@ -44,13 +44,13 @@ function extractPostHogParams<T extends PostHogTrackingOptions>(
 
 // Re-export types for consumers
 export type {
+  DeploymentPredictionCreateOptions,
+  PostHogTrackingOptions,
+  PredictionCreateOptions,
+  PredictionGetOptions,
   ReplicateOptions,
   RunOptions,
   StreamOptions,
-  PredictionCreateOptions,
-  PredictionGetOptions,
-  DeploymentPredictionCreateOptions,
-  PostHogTrackingOptions,
 } from "./types.js";
 
 /**
@@ -81,7 +81,8 @@ export class PostHogReplicate extends ReplicateOriginal {
   private originalPredictionsGet: ReplicateOriginal["predictions"]["get"];
   private originalDeploymentPredictionsCreate: ReplicateOriginal["deployments"]["predictions"]["create"];
   /** Map prediction IDs to their PostHog tracking params from create() */
-  private predictionTrackingParams: Map<string, PostHogTrackingOptions> = new Map();
+  private predictionTrackingParams: Map<string, PostHogTrackingOptions> =
+    new Map();
 
   constructor(options: ReplicateOptions) {
     const { posthog, ...replicateOptions } = options;
@@ -89,21 +90,28 @@ export class PostHogReplicate extends ReplicateOriginal {
     this.posthog = posthog;
 
     // Store references to original methods before wrapping
-    this.originalPredictionsCreate = this.predictions.create.bind(this.predictions);
+    this.originalPredictionsCreate = this.predictions.create.bind(
+      this.predictions,
+    );
     this.originalPredictionsGet = this.predictions.get.bind(this.predictions);
-    this.originalDeploymentPredictionsCreate = this.deployments.predictions.create.bind(this.deployments.predictions);
+    this.originalDeploymentPredictionsCreate =
+      this.deployments.predictions.create.bind(this.deployments.predictions);
 
-    // Wrap predictions methods with PostHog tracking
-    const self = this;
-    const wrappedCreate = (options: PredictionCreateOptions) => self.createPrediction(options);
-    const wrappedGet = (predictionId: string, options?: PredictionGetOptions) => self.getPrediction(predictionId, options);
+    const wrappedCreate = (options: PredictionCreateOptions) =>
+      this.createPrediction(options);
+    const wrappedGet = (predictionId: string, options?: PredictionGetOptions) =>
+      this.getPrediction(predictionId, options);
     (this.predictions as Record<string, unknown>).create = wrappedCreate;
     (this.predictions as Record<string, unknown>).get = wrappedGet;
 
     // Wrap deployments.predictions.create with PostHog tracking
-    const wrappedDeploymentCreate = (owner: string, name: string, options: DeploymentPredictionCreateOptions) =>
-      self.createDeploymentPrediction(owner, name, options);
-    (this.deployments.predictions as Record<string, unknown>).create = wrappedDeploymentCreate;
+    const wrappedDeploymentCreate = (
+      owner: string,
+      name: string,
+      options: DeploymentPredictionCreateOptions,
+    ) => this.createDeploymentPrediction(owner, name, options);
+    (this.deployments.predictions as Record<string, unknown>).create =
+      wrappedDeploymentCreate;
   }
 
   /**
@@ -126,7 +134,10 @@ export class PostHogReplicate extends ReplicateOriginal {
    * });
    * ```
    */
-  override async run(model: `${string}/${string}` | `${string}/${string}:${string}`, options: RunOptions): Promise<object> {
+  override async run(
+    model: `${string}/${string}` | `${string}/${string}:${string}`,
+    options: RunOptions,
+  ): Promise<object> {
     const { posthogParams, replicateOptions } = extractPostHogParams(options);
 
     const getElapsed = createTimer();
@@ -137,7 +148,10 @@ export class PostHogReplicate extends ReplicateOriginal {
 
     try {
       // Call parent class run method
-      output = await super.run(model, replicateOptions as Parameters<ReplicateOriginal["run"]>[1]);
+      output = await super.run(
+        model,
+        replicateOptions as Parameters<ReplicateOriginal["run"]>[1],
+      );
     } catch (err) {
       isError = true;
       error = err;
@@ -190,7 +204,7 @@ export class PostHogReplicate extends ReplicateOriginal {
    */
   override async *stream(
     model: `${string}/${string}` | `${string}/${string}:${string}`,
-    options: StreamOptions
+    options: StreamOptions,
   ): AsyncGenerator<{ event: string; data: string; id?: string }> {
     const { posthogParams, replicateOptions } = extractPostHogParams(options);
 
@@ -245,7 +259,9 @@ export class PostHogReplicate extends ReplicateOriginal {
    * @param options - Prediction options including model/version and input
    * @returns The created prediction object
    */
-  private async createPrediction(options: PredictionCreateOptions): Promise<unknown> {
+  private async createPrediction(
+    options: PredictionCreateOptions,
+  ): Promise<unknown> {
     const { posthogParams, replicateOptions } = extractPostHogParams(options);
 
     const getElapsed = createTimer();
@@ -255,12 +271,19 @@ export class PostHogReplicate extends ReplicateOriginal {
     let httpStatus = 200;
 
     try {
-      const result = await this.originalPredictionsCreate(replicateOptions as Parameters<ReplicateOriginal["predictions"]["create"]>[0]);
+      const result = await this.originalPredictionsCreate(
+        replicateOptions as Parameters<
+          ReplicateOriginal["predictions"]["create"]
+        >[0],
+      );
       prediction = result as unknown as Record<string, unknown>;
 
       // Store tracking params for later predictions.get() calls
       const predictionId = prediction?.id as string | undefined;
-      if (predictionId && Object.values(posthogParams).some(v => v !== undefined)) {
+      if (
+        predictionId &&
+        Object.values(posthogParams).some((v) => v !== undefined)
+      ) {
         this.predictionTrackingParams.set(predictionId, posthogParams);
       }
 
@@ -275,7 +298,8 @@ export class PostHogReplicate extends ReplicateOriginal {
 
       // For predictions.create, we track the creation, not completion
       // The model is either from options.model or derived from options.version
-      const model = replicateOptions.model || replicateOptions.version || "unknown";
+      const model =
+        replicateOptions.model || replicateOptions.version || "unknown";
 
       captureGeneration(this.posthog, {
         model: String(model),
@@ -310,11 +334,19 @@ export class PostHogReplicate extends ReplicateOriginal {
    * @param options - Optional settings including PostHog tracking options
    * @returns The prediction object
    */
-  private async getPrediction(predictionId: string, options?: PredictionGetOptions): Promise<unknown> {
+  private async getPrediction(
+    predictionId: string,
+    options?: PredictionGetOptions,
+  ): Promise<unknown> {
     // Merge stored params from create() with any provided options (provided options take precedence)
     const storedParams = this.predictionTrackingParams.get(predictionId) || {};
-    const providedParams = options ? extractPostHogParams(options).posthogParams : {};
-    const posthogParams: PostHogTrackingOptions = { ...storedParams, ...providedParams };
+    const providedParams = options
+      ? extractPostHogParams(options).posthogParams
+      : {};
+    const posthogParams: PostHogTrackingOptions = {
+      ...storedParams,
+      ...providedParams,
+    };
     const replicateOptions = options ? { signal: options.signal } : undefined;
 
     const getElapsed = createTimer();
@@ -324,7 +356,10 @@ export class PostHogReplicate extends ReplicateOriginal {
     let httpStatus = 200;
 
     try {
-      const result = await this.originalPredictionsGet(predictionId, replicateOptions);
+      const result = await this.originalPredictionsGet(
+        predictionId,
+        replicateOptions,
+      );
       prediction = result as unknown as Record<string, unknown>;
       return result;
     } catch (err) {
@@ -336,9 +371,13 @@ export class PostHogReplicate extends ReplicateOriginal {
       const latency = getElapsed();
 
       // Extract model info from prediction if available
-      const model = prediction?.model as string || prediction?.version as string || "unknown";
+      const model =
+        (prediction?.model as string) ||
+        (prediction?.version as string) ||
+        "unknown";
       const status = prediction?.status as string;
-      const isCompleted = status === "succeeded" || status === "failed" || status === "canceled";
+      const isCompleted =
+        status === "succeeded" || status === "failed" || status === "canceled";
 
       // Clean up stored params when prediction completes
       if (isCompleted) {
@@ -375,7 +414,7 @@ export class PostHogReplicate extends ReplicateOriginal {
   private async createDeploymentPrediction(
     owner: string,
     name: string,
-    options: DeploymentPredictionCreateOptions
+    options: DeploymentPredictionCreateOptions,
   ): Promise<unknown> {
     const { posthogParams, replicateOptions } = extractPostHogParams(options);
 
@@ -389,12 +428,17 @@ export class PostHogReplicate extends ReplicateOriginal {
       const result = await this.originalDeploymentPredictionsCreate(
         owner,
         name,
-        replicateOptions as Parameters<ReplicateOriginal["deployments"]["predictions"]["create"]>[2]
+        replicateOptions as Parameters<
+          ReplicateOriginal["deployments"]["predictions"]["create"]
+        >[2],
       );
       prediction = result as unknown as Record<string, unknown>;
 
       const predictionId = prediction?.id as string | undefined;
-      if (predictionId && Object.values(posthogParams).some(v => v !== undefined)) {
+      if (
+        predictionId &&
+        Object.values(posthogParams).some((v) => v !== undefined)
+      ) {
         this.predictionTrackingParams.set(predictionId, posthogParams);
       }
 
