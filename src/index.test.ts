@@ -19,6 +19,9 @@ const mockStream = mock(async function* () {
 const mockPredictionsCreate = mock(() =>
   Promise.resolve({ id: "pred_123", status: "starting" })
 );
+const mockDeploymentPredictionsCreate = mock(() =>
+  Promise.resolve({ id: "deploy_pred_456", status: "starting" })
+);
 
 // Set up module mock before importing our code
 // Methods must be on prototype for super.method() to work
@@ -31,7 +34,11 @@ mock.module("replicate", () => ({
       list: mock(() => Promise.resolve({})),
     };
     models = {};
-    deployments = {};
+    deployments = {
+      predictions: {
+        create: mockDeploymentPredictionsCreate,
+      },
+    };
     hardware = {};
     collections = {};
     webhooks = {};
@@ -52,6 +59,7 @@ const { captureGeneration, createTimer } = await import("./capture");
 const { POSTHOG_CONSTANTS } = await import("./types");
 
 type PredictionCreateOptions = import("./index").PredictionCreateOptions;
+type DeploymentPredictionCreateOptions = import("./index").DeploymentPredictionCreateOptions;
 
 // Mock PostHog client
 function createMockPostHog() {
@@ -78,6 +86,7 @@ describe("Replicate Wrapper", () => {
     mockRun.mockClear();
     mockStream.mockClear();
     mockPredictionsCreate.mockClear();
+    mockDeploymentPredictionsCreate.mockClear();
   });
 
   describe("constructor", () => {
@@ -293,6 +302,90 @@ describe("Replicate Wrapper", () => {
       expect(captureCall).toBeDefined();
       expect(captureCall!.properties.$ai_async_prediction).toBe(true);
       expect(captureCall!.properties.$ai_prediction_id).toBe("pred_123");
+    });
+  });
+
+  describe("deployments.predictions.create()", () => {
+    test("creates deployment prediction and captures event with owner/name model", async () => {
+      const replicate = new Replicate({
+        posthog: mockPostHog as unknown as PostHog,
+      });
+
+      const createWithTracking = replicate.deployments.predictions.create as (
+        owner: string,
+        name: string,
+        options: DeploymentPredictionCreateOptions
+      ) => Promise<unknown>;
+
+      const prediction = await createWithTracking("acme", "my-model", {
+        input: { prompt: "Hello" },
+        posthogDistinctId: "user_deploy_1",
+      });
+
+      expect(prediction).toMatchObject({ id: "deploy_pred_456", status: "starting" });
+      expect(mockDeploymentPredictionsCreate).toHaveBeenCalledTimes(1);
+
+      const captureCall = mockPostHog.getCaptureCall(0);
+      expect(captureCall).toBeDefined();
+      expect(captureCall!.event).toBe("$ai_generation");
+      expect(captureCall!.distinctId).toBe("user_deploy_1");
+      expect(captureCall!.properties.$ai_model).toBe("acme/my-model");
+      expect(captureCall!.properties.$ai_async_prediction).toBe(true);
+      expect(captureCall!.properties.$ai_is_deployment).toBe(true);
+      expect(captureCall!.properties.$ai_prediction_id).toBe("deploy_pred_456");
+    });
+
+    test("forwards PostHog params and stores tracking params for predictions.get()", async () => {
+      const replicate = new Replicate({
+        posthog: mockPostHog as unknown as PostHog,
+      });
+
+      const createWithTracking = replicate.deployments.predictions.create as (
+        owner: string,
+        name: string,
+        options: DeploymentPredictionCreateOptions
+      ) => Promise<unknown>;
+
+      await createWithTracking("acme", "my-model", {
+        input: { prompt: "test" },
+        posthogDistinctId: "user_deploy_2",
+        posthogTraceId: "trace_deploy_1",
+        posthogGroups: { company: "acme_corp" },
+        posthogProperties: { custom: "value" },
+      });
+
+      const captureCall = mockPostHog.getCaptureCall(0);
+      expect(captureCall).toBeDefined();
+      expect(captureCall!.properties.$ai_trace_id).toBe("trace_deploy_1");
+      expect(captureCall!.properties.custom).toBe("value");
+      expect(captureCall!.groups).toEqual({ company: "acme_corp" });
+    });
+
+    test("captures errors", async () => {
+      const testError = new Error("Deployment not found");
+      mockDeploymentPredictionsCreate.mockImplementationOnce(() => Promise.reject(testError));
+
+      const replicate = new Replicate({
+        posthog: mockPostHog as unknown as PostHog,
+      });
+
+      const createWithTracking = replicate.deployments.predictions.create as (
+        owner: string,
+        name: string,
+        options: DeploymentPredictionCreateOptions
+      ) => Promise<unknown>;
+
+      await expect(
+        createWithTracking("acme", "missing-model", {
+          input: { prompt: "test" },
+          posthogDistinctId: "user_deploy_3",
+        })
+      ).rejects.toThrow("Deployment not found");
+
+      const captureCall = mockPostHog.getCaptureCall(0);
+      expect(captureCall).toBeDefined();
+      expect(captureCall!.properties.$ai_is_error).toBe(true);
+      expect(captureCall!.properties.$ai_model).toBe("acme/missing-model");
     });
   });
 });

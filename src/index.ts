@@ -7,6 +7,7 @@ import type {
   StreamOptions,
   PredictionCreateOptions,
   PredictionGetOptions,
+  DeploymentPredictionCreateOptions,
   PostHogTrackingOptions,
 } from "./types.js";
 
@@ -48,6 +49,7 @@ export type {
   StreamOptions,
   PredictionCreateOptions,
   PredictionGetOptions,
+  DeploymentPredictionCreateOptions,
   PostHogTrackingOptions,
 } from "./types.js";
 
@@ -77,6 +79,7 @@ export class PostHogReplicate extends ReplicateOriginal {
   private posthog: PostHog;
   private originalPredictionsCreate: ReplicateOriginal["predictions"]["create"];
   private originalPredictionsGet: ReplicateOriginal["predictions"]["get"];
+  private originalDeploymentPredictionsCreate: ReplicateOriginal["deployments"]["predictions"]["create"];
   /** Map prediction IDs to their PostHog tracking params from create() */
   private predictionTrackingParams: Map<string, PostHogTrackingOptions> = new Map();
 
@@ -85,9 +88,10 @@ export class PostHogReplicate extends ReplicateOriginal {
     super(replicateOptions);
     this.posthog = posthog;
 
-    // Store references to original predictions methods before wrapping
+    // Store references to original methods before wrapping
     this.originalPredictionsCreate = this.predictions.create.bind(this.predictions);
     this.originalPredictionsGet = this.predictions.get.bind(this.predictions);
+    this.originalDeploymentPredictionsCreate = this.deployments.predictions.create.bind(this.deployments.predictions);
 
     // Wrap predictions methods with PostHog tracking
     const self = this;
@@ -95,6 +99,11 @@ export class PostHogReplicate extends ReplicateOriginal {
     const wrappedGet = (predictionId: string, options?: PredictionGetOptions) => self.getPrediction(predictionId, options);
     (this.predictions as Record<string, unknown>).create = wrappedCreate;
     (this.predictions as Record<string, unknown>).get = wrappedGet;
+
+    // Wrap deployments.predictions.create with PostHog tracking
+    const wrappedDeploymentCreate = (owner: string, name: string, options: DeploymentPredictionCreateOptions) =>
+      self.createDeploymentPrediction(owner, name, options);
+    (this.deployments.predictions as Record<string, unknown>).create = wrappedDeploymentCreate;
   }
 
   /**
@@ -356,6 +365,66 @@ export class PostHogReplicate extends ReplicateOriginal {
         groups: posthogParams.posthogGroups,
         privacyMode: posthogParams.posthogPrivacyMode,
         predictionId,
+      });
+    }
+  }
+
+  /**
+   * Create a prediction via a deployment
+   */
+  private async createDeploymentPrediction(
+    owner: string,
+    name: string,
+    options: DeploymentPredictionCreateOptions
+  ): Promise<unknown> {
+    const { posthogParams, replicateOptions } = extractPostHogParams(options);
+
+    const getElapsed = createTimer();
+    let prediction: Record<string, unknown> | undefined;
+    let isError = false;
+    let error: unknown;
+    let httpStatus = 200;
+
+    try {
+      const result = await this.originalDeploymentPredictionsCreate(
+        owner,
+        name,
+        replicateOptions as Parameters<ReplicateOriginal["deployments"]["predictions"]["create"]>[2]
+      );
+      prediction = result as unknown as Record<string, unknown>;
+
+      const predictionId = prediction?.id as string | undefined;
+      if (predictionId && Object.values(posthogParams).some(v => v !== undefined)) {
+        this.predictionTrackingParams.set(predictionId, posthogParams);
+      }
+
+      return result;
+    } catch (err) {
+      isError = true;
+      error = err;
+      httpStatus = this.extractHttpStatus(err) || 500;
+      throw err;
+    } finally {
+      const latency = getElapsed();
+
+      captureGeneration(this.posthog, {
+        model: `${owner}/${name}`,
+        latency,
+        httpStatus,
+        isError,
+        error,
+        input: replicateOptions.input,
+        output: undefined,
+        distinctId: posthogParams.posthogDistinctId,
+        traceId: posthogParams.posthogTraceId,
+        customProperties: {
+          ...posthogParams.posthogProperties,
+          $ai_async_prediction: true,
+          $ai_is_deployment: true,
+        },
+        groups: posthogParams.posthogGroups,
+        privacyMode: posthogParams.posthogPrivacyMode,
+        predictionId: prediction?.id as string | undefined,
       });
     }
   }
