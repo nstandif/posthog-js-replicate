@@ -13,7 +13,7 @@ import { POSTHOG_CONSTANTS } from "./types.js";
  */
 export function captureGeneration(
   posthog: PostHog,
-  options: CaptureOptions
+  options: CaptureOptions,
 ): void {
   const properties: Record<string, unknown> = {
     // Core properties (always captured)
@@ -73,7 +73,9 @@ export function captureGeneration(
  * Formats input for PostHog event
  * Converts to the expected array format with role/content structure
  */
-function formatInput(input: unknown): Array<{ role: string; content: unknown }> {
+function formatInput(
+  input: unknown,
+): Array<{ role: string; content: unknown }> {
   // Replicate inputs are typically objects, not message arrays
   // We wrap them in a standard format for consistency with PostHog schema
   return [
@@ -88,7 +90,9 @@ function formatInput(input: unknown): Array<{ role: string; content: unknown }> 
  * Formats output for PostHog event
  * Converts to the expected array format with role/content structure
  */
-function formatOutput(output: unknown): Array<{ role: string; content: unknown }> {
+function formatOutput(
+  output: unknown,
+): Array<{ role: string; content: unknown }> {
   // Replicate outputs vary by model - could be string, array, object, URL, etc.
   // We wrap them in a standard format for consistency with PostHog schema
   return [

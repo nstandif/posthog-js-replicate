@@ -1,4 +1,4 @@
-import { test, expect, mock, beforeEach, describe } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { PostHog } from "posthog-node";
 
 // Type for our mock capture calls
@@ -17,7 +17,19 @@ const mockStream = mock(async function* () {
   yield { event: "done", data: "" };
 });
 const mockPredictionsCreate = mock(() =>
-  Promise.resolve({ id: "pred_123", status: "starting" })
+  Promise.resolve({ id: "pred_123", status: "starting" }),
+);
+const mockPredictionsGet = mock(() =>
+  Promise.resolve({
+    id: "deploy_pred_456",
+    status: "succeeded",
+    model: "acme/my-model",
+    input: { prompt: "Hello" },
+    output: "World",
+  }),
+);
+const mockDeploymentPredictionsCreate = mock(() =>
+  Promise.resolve({ id: "deploy_pred_456", status: "starting" }),
 );
 
 // Set up module mock before importing our code
@@ -26,12 +38,16 @@ mock.module("replicate", () => ({
   default: class MockReplicate {
     predictions = {
       create: mockPredictionsCreate,
-      get: mock(() => Promise.resolve({})),
+      get: mockPredictionsGet,
       cancel: mock(() => Promise.resolve({})),
       list: mock(() => Promise.resolve({})),
     };
     models = {};
-    deployments = {};
+    deployments = {
+      predictions: {
+        create: mockDeploymentPredictionsCreate,
+      },
+    };
     hardware = {};
     collections = {};
     webhooks = {};
@@ -52,6 +68,8 @@ const { captureGeneration, createTimer } = await import("./capture");
 const { POSTHOG_CONSTANTS } = await import("./types");
 
 type PredictionCreateOptions = import("./index").PredictionCreateOptions;
+type DeploymentPredictionCreateOptions =
+  import("./index").DeploymentPredictionCreateOptions;
 
 // Mock PostHog client
 function createMockPostHog() {
@@ -78,6 +96,8 @@ describe("Replicate Wrapper", () => {
     mockRun.mockClear();
     mockStream.mockClear();
     mockPredictionsCreate.mockClear();
+    mockPredictionsGet.mockClear();
+    mockDeploymentPredictionsCreate.mockClear();
   });
 
   describe("constructor", () => {
@@ -99,7 +119,7 @@ describe("Replicate Wrapper", () => {
         posthog: mockPostHog as unknown as PostHog,
       });
 
-      const output = await replicate.run("openai/clip", {
+      const _output = await replicate.run("openai/clip", {
         input: { image: "https://example.com/image.jpg" },
         posthogDistinctId: "user_123",
       });
@@ -112,13 +132,13 @@ describe("Replicate Wrapper", () => {
 
       const captureCall = mockPostHog.getCaptureCall(0);
       expect(captureCall).toBeDefined();
-      expect(captureCall!.event).toBe("$ai_generation");
-      expect(captureCall!.distinctId).toBe("user_123");
-      expect(captureCall!.properties.$ai_provider).toBe("replicate");
-      expect(captureCall!.properties.$ai_model).toBe("openai/clip");
-      expect(captureCall!.properties.$ai_is_error).toBe(false);
-      expect(captureCall!.properties.$ai_stream).toBe(false);
-      expect(typeof captureCall!.properties.$ai_latency).toBe("number");
+      expect(captureCall?.event).toBe("$ai_generation");
+      expect(captureCall?.distinctId).toBe("user_123");
+      expect(captureCall?.properties.$ai_provider).toBe("replicate");
+      expect(captureCall?.properties.$ai_model).toBe("openai/clip");
+      expect(captureCall?.properties.$ai_is_error).toBe(false);
+      expect(captureCall?.properties.$ai_stream).toBe(false);
+      expect(typeof captureCall?.properties.$ai_latency).toBe("number");
     });
 
     test("includes input and output in event", async () => {
@@ -132,10 +152,10 @@ describe("Replicate Wrapper", () => {
 
       const captureCall = mockPostHog.getCaptureCall(0);
       expect(captureCall).toBeDefined();
-      expect(captureCall!.properties.$ai_input).toEqual([
+      expect(captureCall?.properties.$ai_input).toEqual([
         { role: "user", content: { image: "https://example.com/test.jpg" } },
       ]);
-      expect(captureCall!.properties.$ai_output_choices).toBeDefined();
+      expect(captureCall?.properties.$ai_output_choices).toBeDefined();
     });
 
     test("respects privacy mode", async () => {
@@ -150,8 +170,8 @@ describe("Replicate Wrapper", () => {
 
       const captureCall = mockPostHog.getCaptureCall(0);
       expect(captureCall).toBeDefined();
-      expect(captureCall!.properties.$ai_input).toBeUndefined();
-      expect(captureCall!.properties.$ai_output_choices).toBeUndefined();
+      expect(captureCall?.properties.$ai_input).toBeUndefined();
+      expect(captureCall?.properties.$ai_output_choices).toBeUndefined();
     });
 
     test("includes trace ID when provided", async () => {
@@ -166,7 +186,7 @@ describe("Replicate Wrapper", () => {
 
       const captureCall = mockPostHog.getCaptureCall(0);
       expect(captureCall).toBeDefined();
-      expect(captureCall!.properties.$ai_trace_id).toBe("trace_abc123");
+      expect(captureCall?.properties.$ai_trace_id).toBe("trace_abc123");
     });
 
     test("includes custom properties", async () => {
@@ -184,8 +204,8 @@ describe("Replicate Wrapper", () => {
 
       const captureCall = mockPostHog.getCaptureCall(0);
       expect(captureCall).toBeDefined();
-      expect(captureCall!.properties.$ai_span_name).toBe("image_analysis");
-      expect(captureCall!.properties.custom_field).toBe("custom_value");
+      expect(captureCall?.properties.$ai_span_name).toBe("image_analysis");
+      expect(captureCall?.properties.custom_field).toBe("custom_value");
     });
 
     test("includes groups when provided", async () => {
@@ -200,7 +220,7 @@ describe("Replicate Wrapper", () => {
 
       const captureCall = mockPostHog.getCaptureCall(0);
       expect(captureCall).toBeDefined();
-      expect(captureCall!.groups).toEqual({ company: "acme_corp" });
+      expect(captureCall?.groups).toEqual({ company: "acme_corp" });
     });
 
     test("captures error events", async () => {
@@ -215,15 +235,18 @@ describe("Replicate Wrapper", () => {
         replicate.run("openai/clip", {
           input: { image: "https://example.com/image.jpg" },
           posthogDistinctId: "user_123",
-        })
+        }),
       ).rejects.toThrow("API rate limit exceeded");
 
       // Verify error was captured
       const captureCall = mockPostHog.getCaptureCall(0);
       expect(captureCall).toBeDefined();
-      expect(captureCall!.properties.$ai_is_error).toBe(true);
-      expect(captureCall!.properties.$ai_error).toBeDefined();
-      const errorObj = captureCall!.properties.$ai_error as Record<string, unknown>;
+      expect(captureCall?.properties.$ai_is_error).toBe(true);
+      expect(captureCall?.properties.$ai_error).toBeDefined();
+      const errorObj = captureCall?.properties.$ai_error as Record<
+        string,
+        unknown
+      >;
       expect(errorObj.message).toBe("API rate limit exceeded");
     });
 
@@ -238,7 +261,7 @@ describe("Replicate Wrapper", () => {
 
       const captureCall = mockPostHog.getCaptureCall(0);
       expect(captureCall).toBeDefined();
-      expect(captureCall!.distinctId).toBe("anonymous");
+      expect(captureCall?.distinctId).toBe("anonymous");
     });
   });
 
@@ -267,8 +290,8 @@ describe("Replicate Wrapper", () => {
 
       const captureCall = mockPostHog.getCaptureCall(0);
       expect(captureCall).toBeDefined();
-      expect(captureCall!.properties.$ai_stream).toBe(true);
-      expect(captureCall!.properties.$ai_model).toBe("meta/llama-2-70b-chat");
+      expect(captureCall?.properties.$ai_stream).toBe(true);
+      expect(captureCall?.properties.$ai_model).toBe("meta/llama-2-70b-chat");
     });
   });
 
@@ -279,7 +302,9 @@ describe("Replicate Wrapper", () => {
       });
 
       // Cast to our extended type that includes PostHog options
-      const createWithTracking = replicate.predictions.create as (options: PredictionCreateOptions) => Promise<unknown>;
+      const createWithTracking = replicate.predictions.create as (
+        options: PredictionCreateOptions,
+      ) => Promise<unknown>;
       const prediction = await createWithTracking({
         model: "stability-ai/sdxl",
         input: { prompt: "A beautiful sunset" },
@@ -291,8 +316,130 @@ describe("Replicate Wrapper", () => {
       // Verify capture includes async prediction marker
       const captureCall = mockPostHog.getCaptureCall(0);
       expect(captureCall).toBeDefined();
-      expect(captureCall!.properties.$ai_async_prediction).toBe(true);
-      expect(captureCall!.properties.$ai_prediction_id).toBe("pred_123");
+      expect(captureCall?.properties.$ai_async_prediction).toBe(true);
+      expect(captureCall?.properties.$ai_prediction_id).toBe("pred_123");
+    });
+  });
+
+  describe("deployments.predictions.create()", () => {
+    test("creates deployment prediction and captures event with owner/name model", async () => {
+      const replicate = new Replicate({
+        posthog: mockPostHog as unknown as PostHog,
+      });
+
+      const createWithTracking = replicate.deployments.predictions.create as (
+        owner: string,
+        name: string,
+        options: DeploymentPredictionCreateOptions,
+      ) => Promise<unknown>;
+
+      const prediction = await createWithTracking("acme", "my-model", {
+        input: { prompt: "Hello" },
+        posthogDistinctId: "user_deploy_1",
+      });
+
+      expect(prediction).toMatchObject({
+        id: "deploy_pred_456",
+        status: "starting",
+      });
+      expect(mockDeploymentPredictionsCreate).toHaveBeenCalledTimes(1);
+
+      const captureCall = mockPostHog.getCaptureCall(0);
+      expect(captureCall).toBeDefined();
+      expect(captureCall?.event).toBe("$ai_generation");
+      expect(captureCall?.distinctId).toBe("user_deploy_1");
+      expect(captureCall?.properties.$ai_model).toBe("acme/my-model");
+      expect(captureCall?.properties.$ai_async_prediction).toBe(true);
+      expect(captureCall?.properties.$ai_is_deployment).toBe(true);
+      expect(captureCall?.properties.$ai_prediction_id).toBe("deploy_pred_456");
+    });
+
+    test("forwards PostHog params and stores tracking params for predictions.get()", async () => {
+      const replicate = new Replicate({
+        posthog: mockPostHog as unknown as PostHog,
+      });
+
+      const createWithTracking = replicate.deployments.predictions.create as (
+        owner: string,
+        name: string,
+        options: DeploymentPredictionCreateOptions,
+      ) => Promise<unknown>;
+
+      await createWithTracking("acme", "my-model", {
+        input: { prompt: "test" },
+        posthogDistinctId: "user_deploy_2",
+        posthogTraceId: "trace_deploy_1",
+        posthogGroups: { company: "acme_corp" },
+        posthogProperties: { custom: "value" },
+      });
+
+      const captureCall = mockPostHog.getCaptureCall(0);
+      expect(captureCall).toBeDefined();
+      expect(captureCall?.properties.$ai_trace_id).toBe("trace_deploy_1");
+      expect(captureCall?.properties.custom).toBe("value");
+      expect(captureCall?.groups).toEqual({ company: "acme_corp" });
+    });
+
+    test("captures errors", async () => {
+      const testError = new Error("Deployment not found");
+      mockDeploymentPredictionsCreate.mockImplementationOnce(() =>
+        Promise.reject(testError),
+      );
+
+      const replicate = new Replicate({
+        posthog: mockPostHog as unknown as PostHog,
+      });
+
+      const createWithTracking = replicate.deployments.predictions.create as (
+        owner: string,
+        name: string,
+        options: DeploymentPredictionCreateOptions,
+      ) => Promise<unknown>;
+
+      await expect(
+        createWithTracking("acme", "missing-model", {
+          input: { prompt: "test" },
+          posthogDistinctId: "user_deploy_3",
+        }),
+      ).rejects.toThrow("Deployment not found");
+
+      const captureCall = mockPostHog.getCaptureCall(0);
+      expect(captureCall).toBeDefined();
+      expect(captureCall?.properties.$ai_is_error).toBe(true);
+      expect(captureCall?.properties.$ai_model).toBe("acme/missing-model");
+    });
+
+    test("propagates $ai_is_deployment to predictions.get() events", async () => {
+      const replicate = new Replicate({
+        posthog: mockPostHog as unknown as PostHog,
+      });
+
+      const createWithTracking = replicate.deployments.predictions.create as (
+        owner: string,
+        name: string,
+        options: DeploymentPredictionCreateOptions,
+      ) => Promise<unknown>;
+
+      const prediction = (await createWithTracking("acme", "my-model", {
+        input: { prompt: "Hello" },
+        posthogDistinctId: "user_deploy_4",
+        posthogTraceId: "trace_deploy_2",
+      })) as { id: string };
+
+      // Now call predictions.get() with the returned ID
+      const getWithTracking = replicate.predictions.get as (
+        id: string,
+      ) => Promise<unknown>;
+      await getWithTracking(prediction.id);
+
+      // Second capture call is from predictions.get()
+      expect(mockPostHog.capture).toHaveBeenCalledTimes(2);
+      const getCall = mockPostHog.getCaptureCall(1);
+      expect(getCall).toBeDefined();
+      expect(getCall?.distinctId).toBe("user_deploy_4");
+      expect(getCall?.properties.$ai_trace_id).toBe("trace_deploy_2");
+      expect(getCall?.properties.$ai_is_deployment).toBe(true);
+      expect(getCall?.properties.$ai_prediction_get).toBe(true);
     });
   });
 });
@@ -315,14 +462,14 @@ describe("captureGeneration", () => {
 
     const call = mockPostHog.getCaptureCall(0);
     expect(call).toBeDefined();
-    expect(call!.event).toBe("$ai_generation");
-    expect(call!.distinctId).toBe("user_123");
-    expect(call!.properties.$ai_provider).toBe("replicate");
-    expect(call!.properties.$ai_model).toBe("test/model");
-    expect(call!.properties.$ai_latency).toBe(1.5);
-    expect(call!.properties.$ai_http_status).toBe(200);
-    expect(call!.properties.$ai_base_url).toBe("https://api.replicate.com");
-    expect(call!.properties.$ai_is_error).toBe(false);
+    expect(call?.event).toBe("$ai_generation");
+    expect(call?.distinctId).toBe("user_123");
+    expect(call?.properties.$ai_provider).toBe("replicate");
+    expect(call?.properties.$ai_model).toBe("test/model");
+    expect(call?.properties.$ai_latency).toBe(1.5);
+    expect(call?.properties.$ai_http_status).toBe(200);
+    expect(call?.properties.$ai_base_url).toBe("https://api.replicate.com");
+    expect(call?.properties.$ai_is_error).toBe(false);
   });
 
   test("excludes input/output in privacy mode", () => {
@@ -340,8 +487,8 @@ describe("captureGeneration", () => {
 
     const call = mockPostHog.getCaptureCall(0);
     expect(call).toBeDefined();
-    expect(call!.properties.$ai_input).toBeUndefined();
-    expect(call!.properties.$ai_output_choices).toBeUndefined();
+    expect(call?.properties.$ai_input).toBeUndefined();
+    expect(call?.properties.$ai_output_choices).toBeUndefined();
   });
 });
 
