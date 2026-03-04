@@ -1,3 +1,10 @@
+# [0.4.0](https://github.com/nstandif/posthog-js-replicate/compare/v0.3.0...v0.4.0) (2026-03-04)
+
+
+### Features
+
+* add deployments.predictions.create() tracking ([#11](https://github.com/nstandif/posthog-js-replicate/issues/11)) ([01b632f](https://github.com/nstandif/posthog-js-replicate/commit/01b632f85016673c43c85f1e2e3b2bbab101da13))
+
 # [0.3.0](https://github.com/nstandif/posthog-js-replicate/compare/v0.2.7...v0.3.0) (2025-11-26)
 
 
